@@ -16,6 +16,15 @@ export type SeedPage = { meta: PageMeta; settings: PageSettings; content: Record
 
 export const SEED_SITE = siteJson as unknown as SiteConfig;
 
+/**
+ * A stored page with the seed's interface strings for keys it lacks: strings added to the site
+ * since the page was stored (the waitlist's, for one) show without anyone editing the page.
+ */
+export function withSeedUi(code: string, c: LangContent, fallbackCode: string): LangContent {
+  const seed = SEED_PAGES["standart"]?.content[code]?.ui ?? SEED_PAGES["standart"]?.content[fallbackCode]?.ui ?? {};
+  return { ...c, ui: { ...seed, ...c.ui } };
+}
+
 export const SEED_PAGES: Record<string, SeedPage> = {
   standart: {
     meta: meta as unknown as PageMeta,

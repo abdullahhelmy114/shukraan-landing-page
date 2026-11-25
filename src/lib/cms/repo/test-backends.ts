@@ -20,7 +20,8 @@ export function sqliteD1(): D1Database & { sqlite: Database } {
     bind: (...values: unknown[]) => make(sql, values),
     first: async <T,>() => (db.query(sql).get(...(params as never[])) as T | undefined) ?? null,
     all: async <T,>() => ({ results: db.query(sql).all(...(params as never[])) as T[] }),
-    run: async () => db.query(sql).run(...(params as never[])),
+    // As D1 reports it: the number of changed rows under meta.
+    run: async () => ({ success: true, meta: { changes: db.query(sql).run(...(params as never[])).changes } }),
     exec: () => db.query(sql).run(...(params as never[])),
   });
   return {

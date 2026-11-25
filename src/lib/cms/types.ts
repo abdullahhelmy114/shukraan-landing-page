@@ -1,3 +1,5 @@
+import type { PublicGroup } from "@/lib/groups";
+
 /** Content model for the landing pages (shared by the server, the page and the editor). */
 
 export type Language = { code: string; label: string; dir: "ltr" | "rtl" };
@@ -87,6 +89,8 @@ export type PageBundle = {
   /** Where each language of this page lives, for the language switcher. */
   links: { code: string; label: string; href: string }[];
   isStandard: boolean;
+  /** The groups the page shows (open and full), without capacity or counts. */
+  groups?: PublicGroup[];
 };
 
 /** A trashed section: its content in every language, kept 30 days. */

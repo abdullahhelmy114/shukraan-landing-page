@@ -17,6 +17,8 @@ let override: Repo | null = null;
 export function useRepo(repo: Repo | null) {
   override = repo;
 }
+/** Whether a test has set the repo (the DATA_DIR check then has nothing to check). */
+export const repoOverridden = () => override !== null;
 
 /** The Worker's bindings for this request (only on Cloudflare). */
 export async function cloudflareEnv(): Promise<CloudflareEnv> {

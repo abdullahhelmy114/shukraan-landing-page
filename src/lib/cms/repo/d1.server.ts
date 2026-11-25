@@ -1,5 +1,5 @@
 import type { PageMeta, SiteConfig, TrashEntry } from "../types";
-import type { D1Database, PreviewLink, R2Bucket, Repo, StoredStage, VersionRecord } from "./types";
+import type { D1Database, DocName, PreviewLink, R2Bucket, Repo, StoredStage, VersionRecord } from "./types";
 
 /**
  * The Cloudflare Workers store: D1 tables (migrations/0001_init.sql) for the site, pages, drafts,
@@ -135,6 +135,25 @@ export function d1Repo(db: D1Database, bucket: R2Bucket | undefined): Repo {
     async getPreviewLink(hash) {
       const r = await db.prepare("SELECT hash, slug, expires_at, created_at FROM preview_links WHERE hash = ?1").bind(hash).first<{ hash: string; slug: string; expires_at: number; created_at: number }>();
       return r ? ({ hash: r.hash, slug: r.slug, expiresAt: Number(r.expires_at), createdAt: Number(r.created_at) } satisfies PreviewLink) : null;
+    },
+
+    async getDoc<T>(name: DocName) {
+      const r = await db.prepare("SELECT json FROM docs WHERE name = ?1").bind(name).first<{ json: string }>();
+      return r ? (JSON.parse(r.json) as T) : null;
+    },
+    // A version check instead of a lock: a change made from a stale read updates no row and is
+    // computed again from the new value (migrations/0002_docs.sql).
+    async updateDoc<T, R>(name: DocName, change: (current: T | null) => { value: T; result: R }) {
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const row = await db.prepare("SELECT json, version FROM docs WHERE name = ?1").bind(name).first<{ json: string; version: number }>();
+        const { value, result } = change(row ? (JSON.parse(row.json) as T) : null);
+        const json = JSON.stringify(value);
+        const res = row
+          ? await db.prepare("UPDATE docs SET json = ?1, version = version + 1, updated_at = ?2 WHERE name = ?3 AND version = ?4").bind(json, Date.now(), name, row.version).run()
+          : await db.prepare("INSERT OR IGNORE INTO docs (name, json, version, updated_at) VALUES (?1, ?2, 1, ?3)").bind(name, json, Date.now()).run();
+        if ((res.meta?.changes ?? 0) === 1) return result;
+      }
+      throw new Error(`docs/${name}: too many changes at once`);
     },
   };
 }

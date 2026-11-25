@@ -7,7 +7,7 @@
 // `bun run cf:build`) and before the tests (bunfig.toml). Prints counts only, never a link.
 //
 // Usage: node scripts/bundle-whatsapp.mjs
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,12 +15,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const OUT = path.join(ROOT, "src/lib/generated/whatsapp-bundle.json");
 const DIR = path.join(ROOT, "whatsapp-gruplari");
-const FILES = ["normal-kadin", "normal-erkek", "yogun-kadin", "yogun-erkek"];
+const COMMUNITY = ["normal-kadin", "normal-erkek", "yogun-kadin", "yogun-erkek"];
+
+/** The four community groups' files, then any group's own (<group id>.txt) added to the folder since. */
+export function filesIn(dir = DIR) {
+  const own = existsSync(dir) ? readdirSync(dir).filter((n) => /^[a-z0-9-]+\.txt$/.test(n)).map((n) => n.slice(0, -4)) : [];
+  return [...new Set([...COMMUNITY, ...own])];
+}
 
 /** { <file>: { text, logo } } from a whatsapp-gruplari folder (missing files are null). */
 export function bundleWhatsapp(dir = DIR) {
   const out = {};
-  for (const file of FILES) {
+  for (const file of filesIn(dir)) {
     const txt = path.join(dir, `${file}.txt`);
     const png = path.join(dir, "logolar", `${file}.png`);
     out[file] = {
@@ -59,7 +65,7 @@ export async function prerenderQr(bundle, dir = DIR) {
     const { PNG } = (await import("pngjs")).default ?? (await import("pngjs"));
     let drawn = 0;
     let verified = 0;
-    for (const file of FILES) {
+    for (const file of Object.keys(bundle)) {
       const invite = await mod.readInvite(mod.folderSource(dir), file);
       if (!invite) continue;
       drawn += 1;
@@ -83,6 +89,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   writeFileSync(OUT, JSON.stringify(bundle));
   const groups = Object.values(bundle);
   console.log(
-    `[whatsapp-gruplari] bundled ${groups.filter((g) => g.text !== null).length}/${FILES.length} link files, ${groups.filter((g) => g.logo).length} logos, ${drawn} QR codes drawn, ${verified} read back by both decoders`,
+    `[whatsapp-gruplari] bundled ${groups.filter((g) => g.text !== null).length}/${groups.length} link files, ${groups.filter((g) => g.logo).length} logos, ${drawn} QR codes drawn, ${verified} read back by both decoders`,
   );
 }

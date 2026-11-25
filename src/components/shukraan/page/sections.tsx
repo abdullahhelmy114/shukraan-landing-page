@@ -11,6 +11,8 @@ import { DiscountField, useCoursePrice } from "../discount";
 import { Emblem } from "../Emblem";
 import { Eyebrow } from "../Eyebrow";
 import { RegisterForm, type Preset } from "../RegisterForm";
+import { Waitlist } from "../Waitlist";
+import { daysText, meetingTimes } from "@/lib/groups";
 import { SOCIAL_GLYPHS } from "../social-icons";
 import { whatsappHref } from "@/lib/whatsapp-link";
 import { WhopCheckout } from "../WhopCheckout";
@@ -407,11 +409,12 @@ function LessonTimes({ value }: { value: string }) {
   );
 }
 
+// The groups come from the panel's «المجموعات» page (src/lib/groups.ts): open ones, and full ones
+// with «Doldu» and the way to the waitlist; closed ones are not shown. No capacity or count here.
 function Timetable({ s, base }: SectionProps) {
-  const { t, edit } = usePage();
+  const { t, edit, groups } = usePage();
   const f = s.fields;
   const P = p(base);
-  const rows = arr<{ id: string; plan: string; group: string; days: string; time: string }>(f["rows"]);
   return (
     <section id={s.id} className="scroll-mt-4 bg-background py-24 sm:py-32">
       <div className="mx-auto max-w-5xl px-4 sm:px-8">
@@ -427,31 +430,47 @@ function Timetable({ s, base }: SectionProps) {
             <span role="columnheader">{t("timetable.days")}</span>
             <span role="columnheader">{t("timetable.time")}</span>
           </div>
-          {rows.map((r, i) => {
-            const R = (k: string) => P("rows", at(r.id), k);
-            return (
-              <Item key={r.id} list={P("rows")} id={r.id} index={i} count={rows.length} attrs={{ role: "row" }} className="grid gap-1 border-t border-border px-6 py-4 first:border-t-0 md:grid-cols-[1.25fr_0.9fr_1fr_1.65fr] md:items-center md:gap-4 md:first:border-t">
-                <span role="cell" className="font-semibold text-primary">
-                  <Txt path={R("plan")} value={r.plan} />
+          {groups.map((g) => (
+            <div key={g.id} role="row" data-group={g.id} data-status={g.status} className="grid gap-1 border-t border-border px-6 py-4 first:border-t-0 md:grid-cols-[1.25fr_0.9fr_1fr_1.65fr] md:items-center md:gap-4 md:first:border-t">
+              <span role="cell" className="flex flex-wrap items-center gap-2 font-semibold text-primary">
+                {t(`course.${g.course}`)}
+                {g.status === "full" && (
+                  <span data-full-badge className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
+                    {t("group.full")}
+                  </span>
+                )}
+              </span>
+              <span role="cell" className="text-sm text-foreground">
+                <span className="text-muted-foreground md:hidden">{t("timetable.group")}: </span>
+                {t(g.gender === "Kadın" ? "form.gender.female" : "form.gender.male")}
+                {g.level && <bdi dir="ltr"> · {g.level}</bdi>}
+              </span>
+              <span role="cell" className="text-sm text-foreground">
+                <span className="text-muted-foreground md:hidden">{t("timetable.days")}: </span>
+                {daysText(g.days, t)}
+              </span>
+              <span role="cell" className="font-serif text-lg font-semibold text-primary">
+                <span className="font-sans text-sm font-normal text-muted-foreground md:hidden">{t("timetable.time")}: </span>
+                <LessonTimes value={meetingTimes(g.hour)} />
+              </span>
+              {g.status === "full" && (
+                <span role="cell" data-full-note className="mt-2 flex flex-col gap-3 rounded-2xl bg-secondary/70 p-4 text-sm text-primary sm:flex-row sm:items-center sm:justify-between md:col-span-4">
+                  <span>{t("group.fullLine")}</span>
+                  <button type="button" onClick={() => go("bekleme")} className="shrink-0 rounded-full border border-primary/30 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground">
+                    {t("waitlist.title")}
+                  </button>
                 </span>
-                <span role="cell" className="text-sm text-foreground">
-                  <span className="text-muted-foreground md:hidden">{t("timetable.group")}: </span>
-                  <Txt path={R("group")} value={r.group} />
-                </span>
-                <span role="cell" className="text-sm text-foreground">
-                  <span className="text-muted-foreground md:hidden">{t("timetable.days")}: </span>
-                  <Txt path={R("days")} value={r.days} />
-                </span>
-                <span role="cell" className="font-serif text-lg font-semibold text-primary">
-                  <span className="font-sans text-sm font-normal text-muted-foreground md:hidden">{t("timetable.time")}: </span>
-                  {edit ? <Txt path={R("time")} value={r.time} dir="ltr" className="inline-block" /> : <LessonTimes value={r.time} />}
-                </span>
-              </Item>
-            );
-          })}
+              )}
+            </div>
+          ))}
         </div>
-        {rows.length === 0 && <ListAdd list={P("rows")} template={{ plan: "", group: "", days: "", time: "" }} />}
+        {edit && (
+          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900" dir="rtl" lang="ar">
+            المجموعات ومواعيدها وحالتها تُدار من صفحة «المجموعات» في لوحة التحكم.
+          </p>
+        )}
         <Rich path={P("noteHtml")} html={str(f["noteHtml"])} className="reveal mt-6 rounded-2xl bg-secondary/70 p-5 text-sm leading-relaxed text-primary" />
+        <Waitlist />
       </div>
     </section>
   );

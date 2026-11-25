@@ -51,6 +51,7 @@ removed, 10 MB at most) is stored behind one storage interface (`src/lib/cms/rep
 | `/dad40`, `/en/dad40` … | A referral link: the standard page with that link's discount code |
 | `/<slug>`, `/en/<slug>` … | A course page made in the panel with «Duplicate page» |
 | `/admin` | The control panel (Arabic): log in with `ADMIN_PASSWORD` |
+| `/admin/groups`, `/admin/waitlist` | The groups and the waitlist (panel only) |
 
 In the panel, edit mode is the page itself: click any text or image to change it (per language:
 العربية · English · Türkçe), add, duplicate, hide, reorder (drag in «الأقسام») or delete
@@ -61,6 +62,40 @@ publish. Every section has «مشاركة» in the panel (never on the public pa
 language, share buttons, and a PNG of the section for Instagram and stories. Each publish keeps a version that can be restored. A language added in «الإعدادات
 العامة» needs no code change: its pages start from the English text and its tagline falls back to
 English until it has its own.
+
+### Groups and the waitlist
+
+Groups open one at a time. The panel's **المجموعات** page (`/admin/groups`) lists every group
+with its status (open, full or closed), its capacity (5 by default), its paid registrations and
+the places left; there it can open, close or add a group and change its days, hour and level.
+The page shows open and full groups only, never a number: a group whose paid registrations reach
+its capacity shows «Doldu» and the way to the waitlist, and cannot be chosen in the form. The save
+after payment takes the place atomically, so two payments cannot both take the last one; a payment
+that reaches a full group gets no WhatsApp link, and the panel lists it for the team. A group uses
+its own WhatsApp files (`whatsapp-gruplari/<group id>.txt` and `logolar/<group id>.png`, bundled at
+build time) once it has them, otherwise its course and group type's community link.
+
+**قائمة الانتظار** (`/admin/waitlist`) shows the waitlist entries (filters, CSV, deleting one entry
+or every entry older than X days) and the demand per course × group type × level × time, with
+«Yeni grup açılabilir» on each line that reaches the open-threshold (4 by default). Opening a group
+lists the waitlist entries it suits, with their WhatsApp numbers; nothing is sent automatically.
+The consent box can link to a privacy text: set its address in the panel's interface strings
+(`waitlist.privacyUrl`; empty shows no link).
+
+Everything the page writes lives under `DATA_DIR` (Coolify: `/app/data`, which must be a
+persistent volume). At start-up the server logs one clear error if the folder is missing or
+read-only, and registrations and the waitlist then answer with an error instead of losing data.
+Each file is written to `<name>.<random>.tmp` beside it and then renamed:
+
+| File | What it holds |
+| --- | --- |
+| `groups.json` | The groups (status, capacity, days, hour, level) and the open-threshold |
+| `registrations.json` | Paid places per group, and payments that came after a group filled (with contact details) |
+| `waitlist.json` | The waitlist's entries |
+| `site.json` | Languages, brand and taglines (once edited in the panel) |
+| `pages/<slug>/meta.json`, `draft/`, `published/`, `versions/`, `trash.json` | The pages as edited and published |
+| `preview-links.json` | Preview links handed out |
+| `media/<id>.webp`, `share/<file>.png` | Uploaded images and share images |
 
 ### Emblem, fonts and share images
 

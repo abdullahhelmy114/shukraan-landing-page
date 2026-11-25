@@ -3,17 +3,21 @@ import { headers } from "next/headers";
 
 import { nameFor } from "./i18n";
 import { pageHref } from "./links";
+import { publicGroups } from "@/lib/groups.server";
+
+import { withSeedUi } from "./seed";
 import { readDraft, readPublished, readSite, type PageState } from "./store.server";
 import { sanitizeContent } from "./sanitize.server";
 import type { PageBundle, SiteConfig } from "./types";
 
 export { pageHref };
 
-function toBundle(site: SiteConfig, state: PageState, langCode: string, referral?: string): PageBundle | null {
+async function toBundle(site: SiteConfig, state: PageState, langCode: string, referral?: string): Promise<PageBundle | null> {
   const lang = site.languages.find((l) => l.code === langCode);
-  const content = state.content[langCode];
-  if (!lang || !content) return null;
-  const fallback = state.content[site.fallbackLanguage] ?? content;
+  const stored = state.content[langCode];
+  if (!lang || !stored) return null;
+  const content = withSeedUi(langCode, stored, site.fallbackLanguage);
+  const fallback = withSeedUi(site.fallbackLanguage, state.content[site.fallbackLanguage] ?? stored, site.fallbackLanguage);
   return {
     site,
     meta: state.meta,
@@ -23,6 +27,7 @@ function toBundle(site: SiteConfig, state: PageState, langCode: string, referral
     fallbackUi: fallback.ui,
     links: site.languages.map((l) => ({ code: l.code, label: l.label, href: pageHref(site, state.meta.slug, l.code, referral) })),
     isStandard: state.meta.slug === site.standardPage,
+    groups: await publicGroups(),
   };
 }
 

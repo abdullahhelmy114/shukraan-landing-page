@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type { PageMeta, SiteConfig, TrashEntry, VersionInfo } from "../types";
-import type { PreviewLink, Repo, Stage, StoredBlob, StoredStage, VersionRecord } from "./types";
+import type { DocName, PreviewLink, Repo, Stage, StoredBlob, StoredStage, VersionRecord } from "./types";
 
 /**
  * The Docker / Coolify store: JSON files under DATA_DIR (a persistent volume, /app/data):
@@ -15,6 +15,11 @@ import type { PreviewLink, Repo, Stage, StoredBlob, StoredStage, VersionRecord }
  *   pages/<slug>/trash.json           deleted sections (kept 30 days)
  *   preview-links.json                preview links handed out (expired ones are dropped)
  *   media/<id>.webp, share/<file>     uploaded images, share images
+ *   groups.json                       the groups: status, capacity, days and hour; the waitlist's open-threshold
+ *   registrations.json                paid places per group, and payments that came after a group filled
+ *   waitlist.json                     the waitlist's entries
+ *
+ * Every file is written atomically: a temporary file (<name>.<random>.tmp) beside it, then a rename.
  *
  * Login failures and signed-out sessions are kept in memory: one Node.js process serves them all.
  */
@@ -34,6 +39,18 @@ async function writeJson(file: string, value: unknown) {
   const tmp = `${file}.${Math.random().toString(36).slice(2, 10)}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
   await fs.rename(tmp, file);
+}
+
+// One Node.js process: documents are changed one at a time per file.
+const locks = new Map<string, Promise<unknown>>();
+function serialize<R>(key: string, task: () => Promise<R>): Promise<R> {
+  const run = (locks.get(key) ?? Promise.resolve()).then(task, task);
+  const tail = run.catch(() => {});
+  locks.set(key, tail);
+  void tail.then(() => {
+    if (locks.get(key) === tail) locks.delete(key);
+  });
+  return run;
 }
 
 const exists = (p: string) =>
@@ -58,6 +75,7 @@ export function fileRepo(dataDir: string): Repo {
   const pageDir = (slug: string) => path.join(dataDir, "pages", slug);
   const stageDir = (slug: string, stage: Stage) => path.join(pageDir(slug), stage);
   const previewsFile = path.join(dataDir, "preview-links.json");
+  const docFile = (name: DocName) => path.join(dataDir, `${name}.json`);
 
   return {
     kind: "file",
@@ -131,8 +149,11 @@ export function fileRepo(dataDir: string): Repo {
     },
     async putBlob(key, data) {
       if (!KEY.test(key)) throw new Error("bad key");
-      await fs.mkdir(path.dirname(path.join(dataDir, key)), { recursive: true });
-      await fs.writeFile(path.join(dataDir, key), data);
+      const file = path.join(dataDir, key);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      const tmp = `${file}.${Math.random().toString(36).slice(2, 10)}.tmp`;
+      await fs.writeFile(tmp, data);
+      await fs.rename(tmp, file);
     },
 
     async loginFailures(ip, since) {
@@ -160,5 +181,13 @@ export function fileRepo(dataDir: string): Repo {
       await writeJson(previewsFile, [...list, link]);
     },
     getPreviewLink: async (hash) => ((await readJson<PreviewLink[]>(previewsFile)) ?? []).find((l) => l.hash === hash) ?? null,
+
+    getDoc: <T,>(name: DocName) => readJson<T>(docFile(name)),
+    updateDoc: <T, R>(name: DocName, change: (current: T | null) => { value: T; result: R }) =>
+      serialize(docFile(name), async () => {
+        const { value, result } = change(await readJson<T>(docFile(name)));
+        await writeJson(docFile(name), value);
+        return result;
+      }),
   };
 }

@@ -16,6 +16,10 @@ export const registrationSchema = z.object({
   goal: z.string().trim().min(1).max(2000),
   /** The discount code used ("" without one); this column held the Dâd answer before. */
   eligibility: z.string().trim().max(40),
+  /** The group chosen in «Tercih ettiğin grup» (src/lib/groups.ts); an older page sends none. */
+  group: z.string().trim().max(60).optional().default(""),
+  /** The payment attempt's id: a retried save never takes a second place in the group. */
+  ref: z.string().trim().max(80).optional().default(""),
 });
 
 export type RegistrationPayload = z.input<typeof registrationSchema>;

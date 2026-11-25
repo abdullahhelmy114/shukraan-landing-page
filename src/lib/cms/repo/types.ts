@@ -18,6 +18,10 @@ export type StoredBlob = { data: Uint8Array; contentType: string };
 
 export type PreviewLink = { hash: string; slug: string; expiresAt: number; createdAt: number };
 
+/** Small JSON documents kept whole: the groups, their paid seats and the waitlist. */
+export const DOC_NAMES = ["groups", "registrations", "waitlist"] as const;
+export type DocName = (typeof DOC_NAMES)[number];
+
 export interface Repo {
   readonly kind: "file" | "d1";
 
@@ -57,6 +61,14 @@ export interface Repo {
 
   putPreviewLink(link: PreviewLink): Promise<void>;
   getPreviewLink(hash: string): Promise<PreviewLink | null>;
+
+  getDoc<T>(name: DocName): Promise<T | null>;
+  /**
+   * Changes one document atomically: `change` gets the current value (null when there is none) and
+   * returns the new value and a result. Two changes never interleave, so two payments cannot both
+   * take a group's last place (one process: a lock; D1: a version check, retried).
+   */
+  updateDoc<T, R>(name: DocName, change: (current: T | null) => { value: T; result: R }): Promise<R>;
 }
 
 // ── The few Cloudflare binding types the D1/R2 implementation uses ────────────────────────────
@@ -64,8 +76,10 @@ export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T = Record<string, unknown>>(): Promise<T | null>;
   all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
-  run(): Promise<unknown>;
+  run(): Promise<D1Result>;
 }
+/** What D1 reports for a statement that changes rows. */
+export type D1Result = { meta?: { changes?: number } };
 export interface D1Database {
   prepare(sql: string): D1PreparedStatement;
   batch(statements: D1PreparedStatement[]): Promise<unknown[]>;

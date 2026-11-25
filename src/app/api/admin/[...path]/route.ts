@@ -19,6 +19,7 @@ import {
   verifySession,
 } from "@/lib/cms/auth.server";
 import { MAX_UPLOAD, saveUpload } from "@/lib/cms/media.server";
+import { groupsApi } from "@/lib/groups-admin.server";
 import {
   applyDraftOps,
   duplicatePage,
@@ -48,6 +49,7 @@ import {
  *   POST page/<slug>/publish · POST page/<slug>/versions/<id>/restore
  *   POST page/<slug>/trash/<id>/restore · POST page/<slug>/preview
  *   POST media · GET site · PUT site
+ *   groups… and waitlist… (src/lib/groups-admin.server.ts)
  */
 export const dynamic = "force-dynamic";
 
@@ -100,6 +102,10 @@ async function handle(req: NextRequest, path: string[]): Promise<Response> {
   if (route === "session" && method === "GET") return json({ loggedIn: await loggedIn(), configured: loginConfigured() });
 
   if (!(await loggedIn())) return fail("انتهت الجلسة. سجّل الدخول من جديد.", 401);
+
+  // ── Groups and the waitlist (src/lib/groups-admin.server.ts) ───────────────────────────
+  const groupsAnswer = await groupsApi(route, method, new URL(req.url), () => body(req));
+  if (groupsAnswer) return groupsAnswer;
 
   // ── Site (languages and taglines) ───────────────────────────────────────────────────────
   if (route === "site") {
@@ -198,4 +204,4 @@ async function run(req: NextRequest, ctx: { params: Promise<{ path: string[] }> 
   }
 }
 
-export { run as GET, run as POST, run as PUT, run as PATCH };
+export { run as GET, run as POST, run as PUT, run as PATCH, run as DELETE };

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { PublicGroup } from "@/lib/groups";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Emblem } from "@/components/shukraan/Emblem";
@@ -14,6 +15,8 @@ import { SECTION_TYPES, type ImageField, type LockupSetting, type PageBundle, ty
 import { api, arDate } from "./api";
 
 export type EditorInitial = {
+  /** The groups the page shows (open and full), without capacity or counts. */
+  groups?: PublicGroup[];
   site: SiteConfig;
   meta: PageMeta;
   settings: PageSettings;
@@ -143,8 +146,9 @@ export function Editor({ slug, lang, initial }: { slug: string; lang: string; in
       fallbackUi: (content[site.fallbackLanguage] ?? content[lang]!).ui,
       links: [],
       isStandard: meta.slug === site.standardPage,
+      ...(initial.groups ? { groups: initial.groups } : {}),
     }),
-    [site, meta, settings, language, content, lang],
+    [site, meta, settings, language, content, lang, initial.groups],
   );
 
   const saveSettings = (next: PageSettings) => {

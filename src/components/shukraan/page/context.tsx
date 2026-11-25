@@ -5,6 +5,7 @@ import { createContext, use, type ReactNode } from "react";
 import type { Op } from "@/lib/cms/ops";
 import type { Translate } from "@/lib/cms/i18n";
 import type { ImageField, LangContent, PageMeta, PageSettings, SiteConfig } from "@/lib/cms/types";
+import type { PublicGroup } from "@/lib/groups";
 
 /** What the editor supplies while a page is in edit mode. */
 export type EditApi = {
@@ -34,6 +35,8 @@ export type PageCtx = {
   /** Other languages of this page, for the language switcher. */
   links: { code: string; label: string; href: string }[];
   edit: EditApi | null;
+  /** The groups the page shows (open and full), without capacity or counts. */
+  groups: PublicGroup[];
 };
 
 const Ctx = createContext<PageCtx | null>(null);

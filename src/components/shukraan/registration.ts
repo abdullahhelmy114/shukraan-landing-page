@@ -6,20 +6,27 @@ import { groupIdFor, type CourseType, type Gender, type WhatsAppInvite } from ".
 export const PAY_STEP = 2;
 export const DONE_STEP = 3;
 
-/** The form's answers (steps 1–2), and the discount code a paid registration used ("" for none). */
+/**
+ * The form's answers (steps 1–2), the discount code a paid registration used ("" for none) and,
+ * once paid, its payment attempt's id (the save's reference: a retry never takes a second place).
+ */
 export type Answers = {
   course: CourseType;
   gender: Gender | "";
+  /** The group chosen in «Tercih ettiğin grup» (src/lib/groups.ts). */
+  group: string;
   name: string;
   phone: string;
   email: string;
   goal: string;
   code: string;
+  attempt?: string;
 };
 
 export const EMPTY_ANSWERS: Answers = {
   course: "intensive",
   gender: "",
+  group: "",
   name: "",
   phone: "",
   email: "",
@@ -42,6 +49,8 @@ function toPayload(a: Answers): Record<keyof RegistrationPayload, string> {
     goal: a.goal,
     // The column that held the Dâd answer now holds the discount code used ("" without one).
     eligibility: a.code,
+    group: a.group,
+    ref: a.attempt ?? "",
   };
 }
 
@@ -56,6 +65,8 @@ const FIELD_STEP: Record<keyof RegistrationPayload, number> = {
   goal: 1,
   // The discount code is entered in the payment step.
   eligibility: PAY_STEP,
+  group: 0,
+  ref: 0,
 };
 
 /** The first step holding an answer the API would refuse, or null if the API would accept them all. */
@@ -116,9 +127,10 @@ export function forgetPayingStep() {
  */
 export function markPaid(a: Answers): string | null {
   const kept = read(PAYING_KEY) as { attempt?: unknown } | null;
-  write(PAID_KEY, [...readPaid(), a]);
+  const id = typeof kept?.attempt === "string" ? kept.attempt : null;
+  write(PAID_KEY, [...readPaid(), id ? { ...a, attempt: id } : a]);
   remove(PAYING_KEY);
-  return typeof kept?.attempt === "string" ? kept.attempt : null;
+  return id;
 }
 
 /**
@@ -142,8 +154,11 @@ export function resumePoint(
 }
 
 // ── Saving ───────────────────────────────────────────────────────────────────────────────────
-/** One save attempt's outcome; a saved registration comes with its group's invite (or null). */
-export type SaveEvent = { answers: Answers; saved: boolean; invite: WhatsAppInvite | null };
+/**
+ * One save attempt's outcome; a saved registration comes with its group's invite (or null), or
+ * full: the group filled while this person was paying (no link; the team gets in touch).
+ */
+export type SaveEvent = { answers: Answers; saved: boolean; invite: WhatsAppInvite | null; full: boolean };
 const listeners = new Set<(event: SaveEvent) => void>();
 
 /** Calls `listener` after every save attempt; returns the unsubscribe function. */
@@ -183,6 +198,7 @@ async function run() {
   inFlight = true;
   let saved = false;
   let invite: WhatsAppInvite | null = null;
+  let full = false;
   try {
     const res = await fetch(ENDPOINT, {
       method: "POST",
@@ -191,12 +207,16 @@ async function run() {
       keepalive: true,
     });
     saved = res.ok;
-    if (saved) invite = inviteFrom(await res.json().catch(() => null));
+    if (saved) {
+      const data: unknown = await res.json().catch(() => null);
+      invite = inviteFrom(data);
+      full = (data as { full?: unknown } | null)?.full === true;
+    }
   } catch {
     // Network error: retried below.
   }
   inFlight = false;
-  listeners.forEach((listener) => listener({ answers: next, saved, invite }));
+  listeners.forEach((listener) => listener({ answers: next, saved, invite, full }));
   if (saved) {
     const rest = readPaid().slice(1);
     if (rest.length) write(PAID_KEY, rest);

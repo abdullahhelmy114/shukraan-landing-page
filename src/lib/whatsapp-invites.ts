@@ -4,6 +4,7 @@ import { BarcodeFormat, BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeRea
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { WHATSAPP_GROUPS, type WhatsAppInvite } from "@/components/shukraan/data";
+import { communityFile, type Group } from "@/lib/groups";
 import BUNDLE from "./generated/whatsapp-bundle.json";
 import { decodePng, encodePngRGB, type RGBAImage } from "./png";
 
@@ -287,6 +288,17 @@ export async function readInvite(from: string | InviteSource, file: string): Pro
 export async function inviteForGroup(groupId: string, from: string | InviteSource = defaultSource()): Promise<WhatsAppInvite | null> {
   const group = WHATSAPP_GROUPS.find((g) => g.id === groupId);
   return group ? readInvite(from, group.file) : null;
+}
+
+/**
+ * A scheduled group's invite (src/lib/groups.ts): its own files (whatsapp-gruplari/<group id>.txt
+ * and logolar/<group id>.png) once it has a link there, otherwise its course and group type's
+ * community files, as before.
+ */
+export async function inviteForScheduledGroup(group: Pick<Group, "id" | "course" | "gender">, from: string | InviteSource = defaultSource()): Promise<WhatsAppInvite | null> {
+  const src = asSource(from);
+  const own = await src.text(group.id);
+  return readInvite(src, own !== null && parseLink(own) ? group.id : communityFile(group.course, group.gender));
 }
 
 /**

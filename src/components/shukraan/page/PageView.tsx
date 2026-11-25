@@ -12,6 +12,8 @@ import type { Preset } from "../RegisterForm";
 import { whatsappHref } from "@/lib/whatsapp-link";
 import { WhatsAppFloat } from "../WhatsAppFloat";
 import { Footer, Header } from "./Chrome";
+import { DEFAULT_GROUPS, toPublic, type PublicGroup } from "@/lib/groups";
+
 import { go, PageProvider, type EditApi, type PageCtx } from "./context";
 import { Sections } from "./sections";
 
@@ -20,8 +22,11 @@ import { Sections } from "./sections";
  * with the mobile sign-up bar and the floating WhatsApp button. The editor renders the same view
  * with `edit` set, so what is edited is the real page.
  */
+const DEFAULT_PUBLIC_GROUPS = DEFAULT_GROUPS.map((g) => toPublic(g, 0)).filter((g): g is PublicGroup => g !== null);
+
 export function PageView({ bundle, referral, edit = null }: { bundle: PageBundle; referral?: string; edit?: EditApi | null }) {
   const { site, meta, settings, content, lang, fallbackUi, links, isStandard } = bundle;
+  const groups = bundle.groups ?? DEFAULT_PUBLIC_GROUPS;
   const t = useMemo(() => makeT(content.ui, fallbackUi), [content.ui, fallbackUi]);
   const ctx: PageCtx = useMemo(() => {
     const sep = t("numberGroup");
@@ -37,8 +42,9 @@ export function PageView({ bundle, referral, edit = null }: { bundle: PageBundle
       num: (n: number) => groupDigits(n, sep === "numberGroup" ? "." : sep),
       links,
       edit,
+      groups,
     };
-  }, [site, meta, settings, content, lang, isStandard, t, links, edit]);
+  }, [site, meta, settings, content, lang, isStandard, t, links, edit, groups]);
 
   useScrollMotion();
   // One discount code for the whole page: entered in the prices or the payment step, shown in every price.

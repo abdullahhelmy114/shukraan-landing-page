@@ -18,7 +18,8 @@ import {
 } from "./registration";
 import { WhopCheckout } from "./WhopCheckout";
 import { courseKey, trackOnce, track, typeKey } from "@/lib/analytics";
-import { usePage } from "./page/context";
+import { daysText, meetingTimes, type PublicGroup } from "@/lib/groups";
+import { go, usePage } from "./page/context";
 
 export type Preset = { course: CourseType; nonce: number } | null;
 
@@ -36,15 +37,32 @@ function completePayment(course: CourseType, attempt: string | null) {
   else track("payment_complete", data);
 }
 
+/** «Tercih ettiğin grup»: the open groups of a course and group type (full and closed ones cannot be chosen). */
+const openGroups = (groups: readonly PublicGroup[], course: CourseType, gender: Gender | "") =>
+  groups.filter((g) => g.status === "open" && g.course === course && g.gender === gender);
+/** The group to keep after the course or group type changes: the same one if still offered, the only one if there is one. */
+const keepGroup = (groups: readonly PublicGroup[], course: CourseType, gender: Gender | "", current: string) => {
+  const options = openGroups(groups, course, gender);
+  return options.some((g) => g.id === current) ? current : options.length === 1 ? options[0]!.id : "";
+};
+
 export function RegisterForm({ preset }: { preset: Preset }) {
-  const { t } = usePage();
+  const { t, groups: pageGroups } = usePage();
   const [step, setStep] = useState(0);
   const [err, setErr] = useState("");
   const [f, setF] = useState<Answers>(EMPTY_ANSWERS);
+  // The groups as last checked with the server (before the payment step); the page's until then.
+  const [liveGroups, setLiveGroups] = useState<PublicGroup[] | null>(null);
+  const groups = liveGroups ?? pageGroups;
   // The WhatsApp step's invite, from the save's answer: undefined while waiting, null if none.
   const [invite, setInvite] = useState<WhatsAppInvite | null | undefined>(undefined);
+  // The group filled while this person was paying: no link; the team gets in touch.
+  const [filledWhilePaying, setFilledWhilePaying] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const set = (k: keyof Answers, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const choose = (course: CourseType, gender: Gender | "") => setF((p) => ({ ...p, course, gender, group: keepGroup(groups, course, gender, p.group) }));
+  const options = openGroups(groups, f.course, f.gender);
+  const group = options.some((g) => g.id === f.group) ? f.group : options.length === 1 ? options[0]!.id : "";
   // The page's one discount code, entered in the payment step.
   const { discount, restore } = useDiscount();
 
@@ -53,7 +71,7 @@ export function RegisterForm({ preset }: { preset: Preset }) {
   if (preset !== appliedPreset) {
     setAppliedPreset(preset);
     if (preset) {
-      setF((p) => ({ ...p, course: preset.course }));
+      setF((p) => ({ ...p, course: preset.course, group: keepGroup(groups, preset.course, p.gender, p.group) }));
       setStep(0);
     }
   }
@@ -63,6 +81,7 @@ export function RegisterForm({ preset }: { preset: Preset }) {
     () =>
       onSave((e) => {
         if (e.answers.gender !== f.gender || e.answers.course !== f.course || e.answers.email !== f.email) return;
+        if (e.saved && e.full) setFilledWhilePaying(true);
         if (e.saved) setInvite(e.invite);
         else setInvite((prev) => (prev === undefined ? null : prev));
       }),
@@ -125,9 +144,11 @@ export function RegisterForm({ preset }: { preset: Preset }) {
     return true;
   };
 
-  const next = () => {
+  const next = async () => {
     if (!validate(step)) return;
     setErr("");
+    if (step === 0 && !group) return setErr(t("group.fullLine"));
+    if (step === 0 && group !== f.group) setF((p) => ({ ...p, group }));
     if (step < PAY_STEP - 1) {
       if (step === 0 && f.gender) track("group_select", { course: courseKey(f.course), type: typeKey(f.gender) });
       return setStep(step + 1);
@@ -138,6 +159,20 @@ export function RegisterForm({ preset }: { preset: Preset }) {
       setStep(refused);
       setErr(t("form.invalid"));
       return;
+    }
+    // Nobody pays for a group that has just filled: ask the server (the save checks it again, atomically).
+    const fresh = await fetch("/api/public/groups", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<{ groups?: PublicGroup[] }>) : null))
+      .catch(() => null);
+    if (Array.isArray(fresh?.groups)) {
+      const live = fresh.groups;
+      setLiveGroups(live);
+      if (!live.some((g) => g.id === f.group && g.status === "open")) {
+        setF((p) => ({ ...p, group: keepGroup(live, p.course, p.gender, "") }));
+        setStep(0);
+        setErr(t("group.fullLine"));
+        return;
+      }
     }
     track("payment_step_open", { course: courseKey(f.course) });
     setStep(PAY_STEP);
@@ -174,7 +209,11 @@ export function RegisterForm({ preset }: { preset: Preset }) {
         </p>
         <h3 className="mt-2 text-3xl font-semibold text-primary">{title}</h3>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{t("done.saved")}</p>
-        {invite === undefined ? (
+        {filledWhilePaying ? (
+          <p data-filled className="mt-6 rounded-2xl bg-secondary p-4 text-sm font-medium text-primary">
+            {t("done.full")}
+          </p>
+        ) : invite === undefined ? (
           <div aria-busy="true" className="mt-6 h-24 animate-pulse rounded-2xl bg-secondary" />
         ) : invite ? (
           <div data-invite className="mt-6">
@@ -212,6 +251,7 @@ export function RegisterForm({ preset }: { preset: Preset }) {
             type="button"
             onClick={() => {
               setInvite(undefined);
+              setFilledWhilePaying(false);
               setStep(0);
             }}
             variant="outline" className="h-auto rounded-full border border-primary/30 px-5 py-2.5 text-sm font-medium text-primary"
@@ -238,7 +278,7 @@ export function RegisterForm({ preset }: { preset: Preset }) {
             <div className="grid grid-cols-2 gap-2">
               {(["regular", "intensive"] as CourseType[]).map((course) => (
                 <label key={course} className="flex cursor-pointer items-start gap-2 rounded-lg border border-input bg-card p-3 text-sm text-primary">
-                  <input type="radio" name="course" value={course} checked={f.course === course} onChange={() => setF((p) => ({ ...p, course }))} className="mt-1 accent-primary" />
+                  <input type="radio" name="course" value={course} checked={f.course === course} onChange={() => choose(course, f.gender)} className="mt-1 accent-primary" />
                   <span>{t(`course.${course}`)}<span className="mt-1 block text-xs text-muted-foreground">{t("lessons", { n: priceFor(course).lessons })} · <Amount course={course} kind="total" /></span></span>
                 </label>
               ))}
@@ -250,13 +290,35 @@ export function RegisterForm({ preset }: { preset: Preset }) {
               required
               className={field}
               value={f.gender}
-              onChange={(e) => setF((p) => ({ ...p, gender: e.target.value as Gender }))}
+              onChange={(e) => choose(f.course, e.target.value as Gender)}
             >
               <option value="">{t("form.gender.placeholder")}</option>
               <option value="Kadın">{t("form.gender.female")}</option>
               <option value="Erkek">{t("form.gender.male")}</option>
             </select>
           </div>
+          {f.gender &&
+            (options.length ? (
+              <div>
+                <label className={label} htmlFor="register-group">{t("form.group")}</label>
+                <select id="register-group" name="group" required className={field} value={group} onChange={(e) => set("group", e.target.value)}>
+                  {options.length > 1 && <option value="">{t("form.group.placeholder")}</option>}
+                  {options.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {daysText(g.days, t)} · {meetingTimes(g.hour)}
+                      {g.level ? ` · ${g.level}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div data-no-group className="rounded-2xl bg-secondary p-4 text-sm text-primary">
+                <p>{t("group.fullLine")}</p>
+                <button type="button" onClick={() => go("bekleme")} className="mt-3 rounded-full border border-primary/30 px-4 py-2 text-sm font-semibold text-primary">
+                  {t("waitlist.title")}
+                </button>
+              </div>
+            ))}
         </div>
 
         <div data-step="1" hidden={step !== 1} className="space-y-4">
@@ -303,7 +365,7 @@ export function RegisterForm({ preset }: { preset: Preset }) {
             <span />
           )}
           {step < PAY_STEP && (
-            <Button type="button" onClick={next} className="h-auto whitespace-normal disabled:opacity-60 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-elegant transition hover:scale-[1.03]">
+            <Button type="button" onClick={() => void next()} className="h-auto whitespace-normal disabled:opacity-60 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-elegant transition hover:scale-[1.03]">
               {t("form.next")}
             </Button>
           )}

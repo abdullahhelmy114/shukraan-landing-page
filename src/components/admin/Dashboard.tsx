@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminNav } from "./AdminFrame";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -177,16 +178,19 @@ export function Dashboard({ initialPages, initialSite }: { initialPages: Row[]; 
             <p className="text-xs opacity-70">صفحات الهبوط · أَكاديمِيَّةُ شُكْران إِيدْيُو</p>
           </div>
         </div>
-        <button
-          type="button"
-          className="rounded-full border border-[#f3ead7]/40 px-4 py-2 text-sm hover:bg-[#f3ead7]/10"
-          onClick={async () => {
-            await api("logout", { method: "POST" });
-            window.location.reload();
-          }}
-        >
-          تسجيل الخروج
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminNav />
+          <button
+            type="button"
+            className="rounded-full border border-[#f3ead7]/40 px-4 py-2 text-sm hover:bg-[#f3ead7]/10"
+            onClick={async () => {
+              await api("logout", { method: "POST" });
+              window.location.reload();
+            }}
+          >
+            تسجيل الخروج
+          </button>
+        </div>
       </header>
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8">
         {msg && (

@@ -1,7 +1,8 @@
-/** Runs once when the server starts: reports whether it found the WhatsApp group folder. */
+/** Runs once when the server starts: reports the WhatsApp group data and whether DATA_DIR can be written. */
 export async function register() {
   if (process.env["NEXT_RUNTIME"] === "nodejs") {
-    const { logInvitesFolder } = await import("./instrumentation-node");
+    const { logDataDir, logInvitesFolder } = await import("./instrumentation-node");
+    await logDataDir();
     await logInvitesFolder();
   }
 }
